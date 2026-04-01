@@ -363,9 +363,11 @@
       const input = document.getElementById("addWordsInput").value;
       const list = input.split(/[\n,;]+/).map(w => w.trim().toUpperCase()).filter(w => w.length === 5 && /^[A-Z]+$/.test(w));
       if (list.length === 0) { showMsg("Geen geldige 5-letter woorden gevonden", "error"); return; }
-      const added = await WordPool.add(list);
-      showMsg(added.length + " woorden toegevoegd", "success");
-      document.getElementById("addWordsInput").value = "";
+      try {
+        const added = await WordPool.add(list);
+        showMsg(added.length + " woorden toegevoegd", "success");
+        document.getElementById("addWordsInput").value = "";
+      } catch (e) { showMsg("Fout: " + e.message, "error"); }
     }
 
     async function removeWord(word) {
