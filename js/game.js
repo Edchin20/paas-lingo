@@ -6,7 +6,7 @@
 // ── Woordenlijst (Nederlandse 5-letter woorden, gevalideerd) ──
 const WORDS = [
   "STORM","BLOEM","WATER","DRAAK","KLANK","PLANT","STOOM","TROTS","VREDE","ZWART",
-  "ZWEET","DWEIL","PLANK","SNOER","STOUT","STOEP","KRUIS","PRUIK","STEUN","TAART",
+  "ZWEET","DWEIL","PLANK","SNOER","STOUT","STOEP","PRUIK","STEUN","TAART",
   "BAARD","DRAAI","KLEED","KWAST","SPOOR","STIJL","TROEF","VLOOT","ZWAAN","PAARS",
   "BOTER","DINER","EMMER","GEVEL","NAALD","OEVER","PAREL","RAMEN","SABEL","TEGEL",
   "ADRES","AGENT","ALARM","ALBUM","APPEL","AVOND","BASIS","BEKER","BEZIG","BLOED",
@@ -29,7 +29,7 @@ const WORDS = [
   "ENGEL","GAPEN","PROOI","VAART","ZADEL","LAKEN","SPEEL","SMART","DRAMA","COACH",
   "CLAIM","DATUM","DRAAD","IGLOO","IDOOL","ITEMS","MODEM","OMEGA","OPZIJ","PALET",
   "RAILS","ROOMS","RUGBY","TIRAN","TUMOR","VLAAI","ZILTE","KLOOF","BRONS","DWANG",
-  "HAARD","KAARS","PIANO","WACHT","FEEST","KERST","DORST","ERNST","JACHT","WORST",
+  "HAARD","KAARS","PIANO","WACHT","FEEST","KERST","ERNST","JACHT","WORST",
   "BRUID","HELFT","POETS","RIJST","SCHAT","ZWEEP","SCHOK","MAAND","LEVER","NOOIT",
   "VAKER","LICHT","ANDER","BIJNA","GRAAG","KORTE","LANGE","MOEST","ONDER","RUIME",
   "SNELT","TERUG","BEIDE","DERDE","ENIGE","HALVE","KLEIN",
@@ -269,6 +269,9 @@ const Game = {
 // ═══════════════════════════════════════════
 
 const WordPool = {
+  // Gevoelige woorden die niet gebruikt worden
+  blacklist: ["PASEN", "JUDAS", "DORST", "MARIA", "VADER", "KRUIS", "LEVEN"],
+
   async getAll() {
     requireDb();
     const snap = await db.ref("wordPool").once("value");
@@ -277,7 +280,11 @@ const WordPool = {
       await db.ref("wordPool").set(WORDS);
       return [...WORDS];
     }
-    return Object.values(val).filter(w => typeof w === "string" && w.length === 5);
+    return Object.values(val).filter(w =>
+      typeof w === "string" &&
+      w.length === 5 &&
+      !this.blacklist.includes(w.toUpperCase())
+    );
   },
 
   async add(words) {
@@ -287,7 +294,7 @@ const WordPool = {
     const added = [];
     for (const w of words) {
       const u = w.trim().toUpperCase();
-      if (u.length === 5 && /^[A-Z]+$/.test(u) && !current.includes(u)) {
+      if (u.length === 5 && /^[A-Z]+$/.test(u) && !current.includes(u) && !this.blacklist.includes(u)) {
         current.push(u);
         added.push(u);
       }
@@ -309,7 +316,12 @@ const WordPool = {
     const ref = db.ref("wordPool");
     ref.on("value", snap => {
       const val = snap.val();
-      callback(val ? Object.values(val).filter(w => typeof w === "string" && w.length === 5) : []);
+      const filtered = val ? Object.values(val).filter(w =>
+        typeof w === "string" &&
+        w.length === 5 &&
+        !this.blacklist.includes(w.toUpperCase())
+      ) : [];
+      callback(filtered);
     });
     return () => ref.off("value");
   },
