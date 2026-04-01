@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pkill -f \"python -m http.server 8080\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(pkill -f \"http.server\")"
+    ]
+  }
+}

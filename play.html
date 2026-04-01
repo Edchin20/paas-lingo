@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paas Lingo - Spelen</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- WACHTSCHERM -->
+  <div id="waitScreen" class="center">
+    <h1 class="logo logo-sm">LINGO</h1>
+    <p style="margin-top:1.5rem;color:rgba(255,255,255,.6);font-size:1.2rem">
+      Wachten op de beheerder om het spel te starten...
+    </p>
+    <p style="margin-top:1rem;color:rgba(255,255,255,.4)">
+      Team: <strong id="waitTeamName" style="color:var(--yellow)"></strong>
+    </p>
+    <p style="margin-top:.5rem;color:rgba(255,255,255,.3);font-size:.85rem">
+      Code: <span id="waitCode"></span>
+    </p>
+  </div>
+
+  <!-- SPEELSCHERM -->
+  <div id="playScreen" class="center hidden">
+    <div class="card" style="max-width:550px;width:100%;text-align:center">
+      <p id="playerTeamName" style="font-size:1.6rem;font-weight:900;color:var(--yellow);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.5rem"></p>
+
+      <!-- Scores -->
+      <div id="scoreBar" style="display:flex;gap:1rem;justify-content:center;margin-bottom:1rem;font-size:.85rem;color:rgba(255,255,255,.6)"></div>
+
+      <!-- Jouw beurt -->
+      <div id="turnSection">
+        <p id="turnLabel" class="your-turn">Jouw beurt!</p>
+        <div id="hintBox" class="hint-letter"></div>
+
+        <div class="word-input" id="wordInput"></div>
+
+        <button id="submitBtn" class="btn btn-green" style="font-size:1.1rem" onclick="submitGuess()" disabled>
+          VERSTUUR
+        </button>
+
+        <p id="playError" class="msg-error hidden"></p>
+      </div>
+
+      <!-- Niet jouw beurt -->
+      <div id="waitTurnSection" class="hidden" style="margin-top:2rem">
+        <p class="not-your-turn" id="waitTurnText">Wacht op het andere team...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RONDE GEWONNEN OVERLAY -->
+  <div id="wonOverlay" class="overlay hidden">
+    <p id="wonText" class="overlay-title"></p>
+    <p class="overlay-sub">Wacht op de volgende ronde...</p>
+    <div id="wonScores" style="display:flex;gap:3rem;margin-top:1.5rem"></div>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="js/firebase-config.js?v=3"></script>
+  <script src="js/game.js?v=3"></script>
+  <script src="js/sounds.js?v=3"></script>
+
+  <script>
+    // ── Session data via URL params (primair) of sessionStorage (fallback) ──
+    const params = new URLSearchParams(window.location.search);
+    const gameId = params.get("game") || sessionStorage.getItem("gameId");
+    const teamName = params.get("team") || sessionStorage.getItem("teamName");
+    const teamIndex = parseInt(params.get("idx") || sessionStorage.getItem("teamIndex") || "-1");
+
+    if (!gameId || !teamName || teamIndex < 0) {
+      window.location.href = "join.html";
+    }
+
+    document.getElementById("waitTeamName").textContent = teamName;
+    document.getElementById("waitCode").textContent = gameId;
+    document.getElementById("playerTeamName").textContent = teamName;
+
+    // ── State ──
+    let isMyTurn = false;
+    let firstLetter = "";
+    let currentStatus = "";
+    let letters = ["","","","",""];
+    let submitting = false;
+
+    // ── Build letter inputs ──
+    const wordInputDiv = document.getElementById("wordInput");
+    const inputs = [];
+    for (let i = 0; i < 5; i++) {
+      const inp = document.createElement("input");
+      inp.className = "letter-box";
+      inp.type = "text";
+      inp.maxLength = 2;
+      inp.autocomplete = "off";
+      inp.setAttribute("autocapitalize", "characters");
+      inp.setAttribute("inputmode", "text");
+      inp.dataset.idx = i;
+      if (i === 0) inp.disabled = true;
+
+      // Input event voor zowel desktop als mobiel
+      inp.addEventListener("input", function(e) {
+        const idx = parseInt(this.dataset.idx);
+        if (idx === 0) return;
+        const raw = this.value || "";
+        const char = raw.replace(/[^a-zA-Z]/g, "").slice(-1).toUpperCase();
+        this.value = char;
+        letters[idx] = char;
+        if (char) {
+          Sounds.type();
+          if (idx < 4) inputs[idx + 1].focus();
+        }
+        updateSubmitBtn();
+      });
+
+      inp.addEventListener("keydown", function(e) {
+        const idx = parseInt(this.dataset.idx);
+        if (e.key === "Backspace") {
+          if (!this.value && idx > 1) {
+            inputs[idx - 1].value = "";
+            letters[idx - 1] = "";
+            inputs[idx - 1].focus();
+            updateSubmitBtn();
+          }
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          submitGuess();
+        }
+      });
+
+      // Focus event: selecteer alle tekst bij focus
+      inp.addEventListener("focus", function() {
+        this.select();
+      });
+
+      inputs.push(inp);
+      wordInputDiv.appendChild(inp);
+    }
+
+    function updateSubmitBtn() {
+      const btn = document.getElementById("submitBtn");
+      btn.disabled = submitting || letters.some(l => !l);
+    }
+
+    function resetInputs() {
+      for (let i = 1; i < 5; i++) {
+        inputs[i].value = "";
+        letters[i] = "";
+      }
+      updateSubmitBtn();
+      setTimeout(() => {
+        if (isMyTurn && inputs[1]) inputs[1].focus();
+      }, 150);
+    }
+
+    // ── Submit ──
+    async function submitGuess() {
+      if (submitting) return; // Voorkom dubbele submits
+      const word = letters.join("");
+      if (word.length !== 5 || !/^[A-Z]+$/.test(word)) {
+        showPlayError("Vul alle 5 letters in!");
+        return;
+      }
+      submitting = true;
+      updateSubmitBtn();
+      hidePlayError();
+
+      try {
+        await Game.guess(gameId, word, teamIndex);
+      } catch (e) {
+        showPlayError(e.message);
+      }
+      submitting = false;
+      updateSubmitBtn();
+    }
+
+    function showPlayError(msg) {
+      const el = document.getElementById("playError");
+      el.textContent = msg;
+      el.classList.remove("hidden");
+    }
+    function hidePlayError() {
+      document.getElementById("playError").classList.add("hidden");
+    }
+
+    // ── Listen to game ──
+    let prevStatus = "";
+    let prevTeam = -1;
+
+    Game.listen(gameId, (game) => {
+      currentStatus = game.status;
+
+      // ── WAITING ──
+      if (game.status === "waiting") {
+        document.getElementById("waitScreen").classList.remove("hidden");
+        document.getElementById("playScreen").classList.add("hidden");
+        document.getElementById("wonOverlay").classList.add("hidden");
+        prevStatus = game.status;
+        return;
+      }
+
+      // ── PLAYING ──
+      if (game.status === "playing") {
+        document.getElementById("waitScreen").classList.add("hidden");
+        document.getElementById("playScreen").classList.remove("hidden");
+        document.getElementById("wonOverlay").classList.add("hidden"); // Sluit won-overlay bij nieuwe ronde!
+
+        isMyTurn = game.currentTeam === teamIndex;
+        // Alleen eerste letter (niet het hele woord!)
+        firstLetter = game.word ? game.word[0] : "";
+
+        // Update hint
+        inputs[0].value = firstLetter;
+        letters[0] = firstLetter;
+        document.getElementById("hintBox").textContent = firstLetter;
+
+        // Show/hide sections
+        document.getElementById("turnSection").classList.toggle("hidden", !isMyTurn);
+        document.getElementById("waitTurnSection").classList.toggle("hidden", isMyTurn);
+
+        if (!isMyTurn) {
+          const otherTeam = game.teams && game.teams[game.currentTeam];
+          document.getElementById("waitTurnText").textContent =
+            otherTeam ? otherTeam.name + " is aan de beurt..." : "Wacht op het andere team...";
+        }
+
+        // Reset inputs als beurt wisselt of spel (her)start
+        if (prevTeam !== game.currentTeam || prevStatus !== "playing") {
+          if (isMyTurn) {
+            resetInputs();
+            if (prevTeam !== -1 && prevTeam !== game.currentTeam) Sounds.switchTurn();
+          }
+          hidePlayError();
+        }
+
+        // Update scores
+        updateScoreBar(game);
+        prevStatus = game.status;
+        prevTeam = game.currentTeam;
+        return;
+      }
+
+      // ── ROUND WON ──
+      if (game.status === "round-won") {
+        document.getElementById("wonOverlay").classList.remove("hidden");
+        const winner = game.teams && game.teams[game.winningTeam];
+        const wonByMe = game.winningTeam === teamIndex;
+        document.getElementById("wonText").textContent = wonByMe ? "Jullie winnen!" : (winner ? winner.name + " wint!" : "Ronde voorbij!");
+        document.getElementById("wonText").style.color = wonByMe ? "var(--green)" : "var(--red)";
+
+        // Scores
+        let scoresHtml = "";
+        if (game.teams) {
+          Object.values(game.teams).forEach(t => {
+            scoresHtml += '<div style="text-align:center"><p style="opacity:.7">' + t.name + '</p><p style="font-size:2.5rem;font-weight:900;color:var(--yellow)">' + t.score + '</p></div>';
+          });
+        }
+        document.getElementById("wonScores").innerHTML = scoresHtml;
+
+        if (prevStatus !== "round-won") {
+          wonByMe ? Sounds.victory() : Sounds.incorrect();
+        }
+        prevStatus = game.status;
+        return;
+      }
+    });
+
+    function updateScoreBar(game) {
+      let html = "";
+      if (game.teams) {
+        Object.values(game.teams).forEach(t => {
+          html += '<span>' + t.name + ': <strong style="color:var(--yellow)">' + t.score + '</strong></span>';
+        });
+      }
+      document.getElementById("scoreBar").innerHTML = html;
+    }
+  </script>
+</body>
+</html>

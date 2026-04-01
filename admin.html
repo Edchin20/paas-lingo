@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paas Lingo - Beheerder</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1 style="text-align:center;font-size:2.2rem;font-weight:900;color:var(--yellow);text-transform:uppercase;margin-bottom:.5rem">
+      Lingo Beheerder
+    </h1>
+
+    <!-- Message bar -->
+    <div id="msgBar" class="hidden" style="padding:.7rem 1.2rem;border-radius:12px;margin-bottom:1rem;font-weight:700;text-align:center"></div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="games" onclick="switchTab('games')">Spellen (<span id="gameCount">0</span>)</button>
+      <button class="tab" data-tab="create" onclick="switchTab('create')">+ Nieuw Spel</button>
+      <button class="tab" data-tab="words" onclick="switchTab('words')">Woorden (<span id="wordCountTab">0</span>)</button>
+    </div>
+
+    <!-- ═══ ACTIVE GAME PANEL ═══ -->
+    <div id="activeGamePanel" class="hidden">
+      <div class="card" style="border:2px solid var(--yellow)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem">
+          <h2 id="agName" style="margin:0"></h2>
+          <button onclick="closeActiveGame()" style="background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:1.5rem;font-family:Montserrat">X</button>
+        </div>
+        <div id="agCode" class="game-code" style="font-size:2.2rem"></div>
+
+        <!-- Status / Word / Round -->
+        <div style="display:flex;gap:1rem;margin:1rem 0;flex-wrap:wrap">
+          <div style="flex:1;min-width:150px">
+            <p class="form-label" style="margin:0">Status</p>
+            <span id="agStatus" class="badge badge-waiting"></span>
+          </div>
+          <div style="flex:1;min-width:150px">
+            <p class="form-label" style="margin:0">Woord</p>
+            <span id="agWord" style="color:var(--yellow);font-weight:900;font-size:1.2rem;letter-spacing:.2em"></span>
+          </div>
+          <div style="flex:1;min-width:100px">
+            <p class="form-label" style="margin:0">Ronde</p>
+            <span id="agRound" style="font-weight:900;font-size:1.2rem"></span>
+          </div>
+        </div>
+
+        <!-- Teams -->
+        <p class="form-label">Teams</p>
+        <div id="agTeams" class="team-list"></div>
+
+        <!-- Actions -->
+        <div id="agActions" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem"></div>
+
+        <!-- New round with custom word -->
+        <div id="customWordRow" class="hidden" style="display:flex;gap:.5rem;align-items:center;margin-top:.8rem">
+          <input id="customWordInput" class="form-input" type="text" placeholder="WOORD" maxlength="5" style="width:140px;padding:.5rem">
+          <button class="btn btn-green btn-sm" onclick="newRoundCustom()">Start</button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('customWordRow').classList.add('hidden')">Annuleer</button>
+        </div>
+
+        <!-- Beamer link -->
+        <div style="margin-top:1rem;padding:.7rem;background:rgba(255,215,0,.1);border-radius:10px;border:1px dashed var(--yellow);text-align:center">
+          <p style="font-size:.75rem;color:rgba(255,255,255,.5)">Hoofdscherm (beamer):</p>
+          <a id="agBeamerLink" href="#" target="_blank" style="font-weight:900;font-size:1rem"></a>
+        </div>
+
+        <!-- Word history -->
+        <div id="agHistory" class="hidden" style="margin-top:.8rem">
+          <p class="form-label">Gespeelde woorden</p>
+          <div id="agHistoryChips" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: GAMES ═══ -->
+    <div id="tab-games">
+      <div id="gamesList"></div>
+    </div>
+
+    <!-- ═══ TAB: CREATE ═══ -->
+    <div id="tab-create" class="hidden">
+      <div class="card">
+        <h2>Nieuw Spel Aanmaken</h2>
+        <div class="form-group">
+          <label class="form-label">Spelnaam (optioneel)</label>
+          <input id="newGameName" class="form-input" type="text" placeholder="Bijv. Finale Ronde" maxlength="30"
+            style="text-transform:none;letter-spacing:normal">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Eerste woord (5 letters)</label>
+          <div style="display:flex;gap:.5rem">
+            <input id="newGameWord" class="form-input" type="text" placeholder="Leeg = willekeurig" maxlength="5" style="flex:1">
+            <button class="btn btn-yellow btn-sm" onclick="randomWordBtn()" style="white-space:nowrap">Willekeurig</button>
+          </div>
+        </div>
+        <button class="btn btn-green" style="width:100%" onclick="createGame()">Spel Aanmaken</button>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: WORDS ═══ -->
+    <div id="tab-words" class="hidden">
+      <div class="card">
+        <h2>Woorden Toevoegen</h2>
+        <p style="color:rgba(255,255,255,.4);font-size:.85rem;margin-bottom:.8rem">
+          Meerdere woorden gescheiden door komma's of nieuwe regels. Alleen 5-letter woorden worden toegevoegd.
+        </p>
+        <textarea id="addWordsInput" class="form-input" rows="3" placeholder="STORM, BLOEM, WATER..."></textarea>
+        <button class="btn btn-green btn-sm" style="margin-top:.6rem" onclick="addWords()">Toevoegen</button>
+      </div>
+      <div class="card">
+        <h2>Woordenlijst (<span id="wordCountList">0</span>)</h2>
+        <input id="wordSearch" class="form-input" type="text" placeholder="Zoek..." style="margin-bottom:.8rem"
+          oninput="renderWords()">
+        <div id="wordChips" class="word-chips"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="js/firebase-config.js?v=3"></script>
+  <script src="js/game.js?v=3"></script>
+
+  <script>
+    // ═══ STATE ═══
+    let allGames = [];
+    let allWords = [];
+    let activeGame = null;
+    let activeGameId = null;
+    let activeUnlisten = null;
+
+    // ═══ TABS ═══
+    function switchTab(tab) {
+      document.querySelectorAll("[data-tab]").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+      ["games","create","words"].forEach(t => {
+        const el = document.getElementById("tab-" + t);
+        if (el) el.classList.toggle("hidden", t !== tab);
+      });
+      // Sluit alleen active game als we NIET op games tab klikken
+      if (tab !== "games") closeActiveGame();
+    }
+
+    // ═══ MESSAGES ═══
+    function showMsg(text, type) {
+      const bar = document.getElementById("msgBar");
+      bar.textContent = text;
+      bar.style.background = type === "error" ? "rgba(232,51,74,.2)" : "rgba(46,204,64,.2)";
+      bar.style.border = "2px solid " + (type === "error" ? "var(--red)" : "var(--green)");
+      bar.style.color = type === "error" ? "var(--red)" : "var(--green)";
+      bar.classList.remove("hidden");
+      setTimeout(() => bar.classList.add("hidden"), 4000);
+    }
+
+    // ═══ GAMES LIST ═══
+    Game.listenAll((games) => {
+      allGames = games;
+      document.getElementById("gameCount").textContent = games.length;
+      renderGamesList();
+    });
+
+    function renderGamesList() {
+      const el = document.getElementById("gamesList");
+      if (allGames.length === 0) {
+        el.innerHTML = `<div class="card" style="text-align:center">
+          <p style="color:rgba(255,255,255,.4);margin-bottom:1rem">Nog geen spellen</p>
+          <button class="btn btn-yellow btn-sm" onclick="switchTab('create')">Maak je eerste spel</button>
+        </div>`;
+        return;
+      }
+      let html = "";
+      for (const g of allGames) {
+        const teams = g.teams ? Object.values(g.teams) : [];
+        const statusLabel = g.status === "waiting" ? "Wachten" : g.status === "playing" ? "Bezig" : g.status === "round-won" ? "Ronde klaar" : g.status;
+        const statusClass = g.status === "playing" ? "badge-playing" : g.status === "round-won" ? "badge-won" : "badge-waiting";
+        let teamsStr = teams.map(t => `${t.name}: <strong style="color:var(--yellow)">${t.score}</strong>`).join(" &nbsp; ");
+
+        html += `<div class="game-row" onclick="openGame('${g.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <span style="font-weight:900;font-size:1.15rem;color:var(--yellow);letter-spacing:.12em">${g.id}</span>
+              <span style="margin-left:.8rem;color:rgba(255,255,255,.6)">${g.name || ""}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:.8rem">
+              <span class="badge ${statusClass}">${statusLabel}</span>
+              <span style="color:rgba(255,255,255,.4);font-size:.85rem">${teams.length}/2</span>
+              <button class="btn btn-sm" style="background:rgba(232,51,74,.15);color:var(--red);padding:.3rem .7rem;font-size:.75rem;margin:0"
+                onclick="event.stopPropagation();deleteGame('${g.id}')">Verwijder</button>
+            </div>
+          </div>
+          ${teamsStr ? `<div style="margin-top:.4rem;font-size:.85rem;color:rgba(255,255,255,.5)">${teamsStr}</div>` : ""}
+        </div>`;
+      }
+      el.innerHTML = html;
+    }
+
+    // ═══ OPEN GAME (control panel) ═══
+    function openGame(id) {
+      if (activeUnlisten) activeUnlisten();
+      activeGameId = id;
+      document.getElementById("activeGamePanel").classList.remove("hidden");
+
+      activeUnlisten = Game.listen(id, (game) => {
+        activeGame = game;
+        renderActiveGame(game);
+      });
+    }
+
+    function closeActiveGame() {
+      if (activeUnlisten) { activeUnlisten(); activeUnlisten = null; }
+      activeGameId = null;
+      activeGame = null;
+      document.getElementById("activeGamePanel").classList.add("hidden");
+    }
+
+    function renderActiveGame(g) {
+      document.getElementById("agName").textContent = g.name || g.id;
+      document.getElementById("agCode").textContent = g.id;
+      document.getElementById("agWord").textContent = g.word || "—";
+      document.getElementById("agRound").textContent = g.round || 0;
+
+      const statusEl = document.getElementById("agStatus");
+      const labels = {waiting:"Wachten",playing:"Bezig","round-won":"Ronde gewonnen"};
+      statusEl.textContent = labels[g.status] || g.status;
+      statusEl.className = "badge " + (g.status === "playing" ? "badge-playing" : g.status === "round-won" ? "badge-won" : "badge-waiting");
+
+      // Teams
+      const teams = g.teams ? Object.values(g.teams) : [];
+      let tHtml = "";
+      if (teams.length === 0) {
+        tHtml = '<p style="color:rgba(255,255,255,.3);font-style:italic">Nog geen teams</p>';
+      } else {
+        teams.forEach((t, i) => {
+          const atTurn = i === g.currentTeam && g.status === "playing" ? "at-turn" : "";
+          tHtml += `<div class="team-item ${atTurn}">
+            ${t.name}${atTurn ? ' <span style="color:var(--yellow);font-size:.75rem">(aan beurt)</span>' : ""}
+            <br><span style="color:var(--yellow);font-size:1.8rem;font-weight:900">${t.score}</span>
+          </div>`;
+        });
+      }
+      document.getElementById("agTeams").innerHTML = tHtml;
+
+      // Actions
+      let aHtml = "";
+      if (g.status === "waiting") {
+        aHtml += `<button class="btn btn-green btn-sm" onclick="startGame()" ${teams.length < 2 ? "disabled" : ""}>Start Spel</button>`;
+      }
+      if (g.status === "round-won") {
+        aHtml += `<button class="btn btn-green btn-sm" onclick="newRoundRandom()">Volgende Ronde</button>`;
+        aHtml += `<button class="btn btn-yellow btn-sm" onclick="document.getElementById('customWordRow').classList.remove('hidden')">Eigen Woord</button>`;
+      }
+      if (g.status === "playing") {
+        aHtml += `<span style="color:rgba(255,255,255,.4);font-style:italic;font-size:.9rem">Spel is bezig... Poging ${(g.currentRow||0)+1}/${g.maxAttempts||5}</span>`;
+      }
+      aHtml += `<button class="btn btn-outline btn-sm" onclick="resetScores()">Reset Scores</button>`;
+      document.getElementById("agActions").innerHTML = aHtml;
+
+      // Beamer link
+      const baseUrl = window.location.href.replace(/\/[^/]*$/, "/");
+      const link = document.getElementById("agBeamerLink");
+      link.href = baseUrl + "game.html?id=" + g.id;
+      link.textContent = baseUrl + "game.html?id=" + g.id;
+
+      // History
+      const hist = g.wordHistory ? Object.values(g.wordHistory) : [];
+      const histDiv = document.getElementById("agHistory");
+      if (hist.length > 0) {
+        histDiv.classList.remove("hidden");
+        document.getElementById("agHistoryChips").innerHTML = hist.map(w =>
+          `<span class="chip">${w}</span>`
+        ).join("");
+      } else {
+        histDiv.classList.add("hidden");
+      }
+    }
+
+    // ═══ GAME ACTIONS ═══
+    async function createGame() {
+      const word = document.getElementById("newGameWord").value.trim().toUpperCase();
+      const name = document.getElementById("newGameName").value.trim();
+      if (word && (word.length !== 5 || !/^[A-Z]+$/.test(word))) {
+        showMsg("Woord moet exact 5 letters zijn", "error");
+        return;
+      }
+      try {
+        const game = await Game.create(word || null, name || null);
+        showMsg("Spel " + game.id + " aangemaakt!", "success");
+        document.getElementById("newGameWord").value = "";
+        document.getElementById("newGameName").value = "";
+        switchTab("games");
+        setTimeout(() => openGame(game.id), 300);
+      } catch (e) { showMsg(e.message, "error"); }
+    }
+
+    async function deleteGame(id) {
+      await Game.remove(id);
+      if (activeGameId === id) closeActiveGame();
+      showMsg("Spel verwijderd", "success");
+    }
+
+    async function startGame() {
+      if (!activeGameId) return;
+      try {
+        await Game.start(activeGameId);
+        showMsg("Spel gestart!", "success");
+      } catch (e) { showMsg(e.message, "error"); }
+    }
+
+    async function newRoundRandom() {
+      if (!activeGameId) return;
+      try {
+        const w = await Game.newRound(activeGameId);
+        showMsg("Nieuwe ronde! Woord: " + w, "success");
+      } catch (e) { showMsg(e.message, "error"); }
+    }
+
+    async function newRoundCustom() {
+      const word = document.getElementById("customWordInput").value.trim().toUpperCase();
+      if (word.length !== 5 || !/^[A-Z]+$/.test(word)) {
+        showMsg("Woord moet 5 letters zijn", "error");
+        return;
+      }
+      try {
+        await Game.newRound(activeGameId, word);
+        document.getElementById("customWordInput").value = "";
+        document.getElementById("customWordRow").classList.add("hidden");
+        showMsg("Ronde gestart met: " + word, "success");
+      } catch (e) { showMsg(e.message, "error"); }
+    }
+
+    async function resetScores() {
+      if (!activeGameId) return;
+      await Game.resetScores(activeGameId);
+      showMsg("Scores gereset", "success");
+    }
+
+    function randomWordBtn() {
+      document.getElementById("newGameWord").value = randomWord();
+    }
+
+    // ═══ WORD MANAGEMENT ═══
+    WordPool.listen((words) => {
+      allWords = words;
+      document.getElementById("wordCountTab").textContent = words.length;
+      document.getElementById("wordCountList").textContent = words.length;
+      renderWords();
+    });
+
+    function renderWords() {
+      const search = (document.getElementById("wordSearch")?.value || "").toUpperCase();
+      const filtered = search ? allWords.filter(w => w.includes(search)) : allWords;
+      const el = document.getElementById("wordChips");
+      const show = filtered.slice(0, 200);
+      el.innerHTML = show.map(w =>
+        `<span class="chip">${w}<button onclick="removeWord('${w}')">x</button></span>`
+      ).join("") + (filtered.length > 200 ? `<p style="width:100%;color:rgba(255,255,255,.3);font-size:.8rem;margin-top:.4rem">...en ${filtered.length - 200} meer</p>` : "");
+    }
+
+    async function addWords() {
+      const input = document.getElementById("addWordsInput").value;
+      const list = input.split(/[\n,;]+/).map(w => w.trim().toUpperCase()).filter(w => w.length === 5 && /^[A-Z]+$/.test(w));
+      if (list.length === 0) { showMsg("Geen geldige 5-letter woorden gevonden", "error"); return; }
+      const added = await WordPool.add(list);
+      showMsg(added.length + " woorden toegevoegd", "success");
+      document.getElementById("addWordsInput").value = "";
+    }
+
+    async function removeWord(word) {
+      await WordPool.remove(word);
+    }
+  </script>
+</body>
+</html>

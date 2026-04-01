@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paas Lingo - Join</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="center">
+    <div class="card" style="max-width:480px;width:100%">
+      <h1 style="text-align:center;color:var(--yellow);font-size:1.8rem;text-transform:uppercase;letter-spacing:.1em;margin-bottom:1.5rem">
+        Spel Joinen
+      </h1>
+
+      <div class="form-group">
+        <label class="form-label">Spelcode</label>
+        <input id="codeInput" class="form-input" type="text" placeholder="Voer code in..." maxlength="5" autofocus>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Teamnaam</label>
+        <input id="nameInput" class="form-input" type="text" placeholder="Bijv. Team Oranje" maxlength="20"
+          style="text-transform:none;letter-spacing:normal">
+      </div>
+
+      <button id="joinBtn" class="btn btn-yellow" style="width:100%;font-size:1.2rem" onclick="joinGame()">
+        JOIN SPEL
+      </button>
+
+      <p id="errorMsg" class="msg-error hidden"></p>
+    </div>
+
+    <a href="index.html" style="margin-top:1.5rem;color:rgba(255,255,255,.4);font-size:.9rem">Terug</a>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="js/firebase-config.js?v=3"></script>
+  <script src="js/game.js?v=3"></script>
+
+  <script>
+    const codeInput = document.getElementById("codeInput");
+    const nameInput = document.getElementById("nameInput");
+    const errorMsg = document.getElementById("errorMsg");
+    const joinBtn = document.getElementById("joinBtn");
+
+    // Auto-uppercase spelcode
+    codeInput.addEventListener("input", () => {
+      codeInput.value = codeInput.value.toUpperCase();
+    });
+
+    // Enter = join
+    [codeInput, nameInput].forEach(el => {
+      el.addEventListener("keydown", e => { if (e.key === "Enter") joinGame(); });
+    });
+
+    async function joinGame() {
+      const code = codeInput.value.trim().toUpperCase();
+      const name = nameInput.value.trim();
+
+      if (!code || !name) {
+        showError("Vul beide velden in");
+        return;
+      }
+
+      joinBtn.disabled = true;
+      joinBtn.textContent = "Joinen...";
+      hideError();
+
+      try {
+        const teamIndex = await Game.joinTeam(code, name);
+        // Doorsturen via URL parameters (zodat meerdere tabs werken)
+        window.location.href = "play.html?game=" + code + "&team=" + encodeURIComponent(name) + "&idx=" + teamIndex;
+      } catch (e) {
+        showError(e.message);
+        joinBtn.disabled = false;
+        joinBtn.textContent = "JOIN SPEL";
+      }
+    }
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      errorMsg.classList.remove("hidden");
+    }
+    function hideError() {
+      errorMsg.classList.add("hidden");
+    }
+  </script>
+</body>
+</html>

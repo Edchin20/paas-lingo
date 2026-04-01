@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paas Lingo - Hoofdscherm</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* Overschrijf hidden voor flex containers */
+    .screen-flex { display:flex; flex-direction:column; align-items:center; min-height:100vh; padding:2rem; }
+    .screen-flex.hidden { display:none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- LOBBY -->
+  <div id="lobbyScreen" class="center">
+    <h1 class="logo" style="font-size:5rem">LINGO</h1>
+    <p class="logo-sub">PAAS EDITIE</p>
+    <div id="lobbyTeams" class="scoreboard" style="margin-top:2rem"></div>
+    <p id="lobbyWait" style="margin-top:1.5rem;color:rgba(255,255,255,.6);font-size:1.2rem"></p>
+    <div style="margin-top:2rem;padding:1rem 2rem;background:rgba(255,215,0,.1);border-radius:14px;border:2px dashed var(--yellow);display:inline-block">
+      <p style="font-size:.75rem;color:rgba(255,255,255,.4)">SPELCODE</p>
+      <p id="lobbyCode" style="font-size:2.5rem;font-weight:900;color:var(--yellow);letter-spacing:.3em"></p>
+    </div>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="gameScreen" class="screen-flex hidden">
+    <div id="scoreboard" class="scoreboard"></div>
+    <p id="turnIndicator" class="turn-text"></p>
+    <div id="board" class="board"></div>
+    <p id="roundInfo" style="margin-top:1rem;color:rgba(255,255,255,.3);font-size:.85rem"></p>
+  </div>
+
+  <!-- ROUND WON OVERLAY -->
+  <div id="wonOverlay" class="overlay hidden">
+    <p id="wonTitle" class="overlay-title"></p>
+    <p class="overlay-title" style="font-size:2rem;margin-top:.5rem">Wint de ronde!</p>
+    <div id="wonWord" class="word-reveal" style="margin-top:1.5rem"></div>
+    <div id="wonScores" style="display:flex;gap:3rem;margin-top:2rem"></div>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="js/firebase-config.js?v=3"></script>
+  <script src="js/game.js?v=3"></script>
+  <script src="js/sounds.js?v=3"></script>
+
+  <script>
+    // ── Get game ID from URL: game.html?id=XXXXX ──
+    const params = new URLSearchParams(window.location.search);
+    const gameId = params.get("id");
+
+    if (!gameId) {
+      document.body.innerHTML = '<div class="center"><h1 class="logo logo-sm">LINGO</h1><p style="margin-top:1rem;color:var(--red)">Geen spelcode opgegeven.<br>Gebruik: game.html?id=XXXXX</p><a href="admin.html" style="margin-top:1.5rem;color:var(--yellow)">Ga naar Beheerder</a></div>';
+      // Stop hier - geen listeners starten
+      throw new Error("Geen gameId");
+    }
+
+    document.getElementById("lobbyCode").textContent = gameId;
+
+    // ── State ──
+    let boardData = createEmptyBoard();
+    let prevStatus = "";
+    let prevAttemptCount = 0;
+    let prevTeam = -1;
+    let animating = false;
+
+    function createEmptyBoard() {
+      return Array.from({length: 5}, () => Array.from({length: 5}, () => ({letter: "", state: "empty"})));
+    }
+
+    function renderBoard() {
+      const boardEl = document.getElementById("board");
+      if (!boardEl) return;
+      boardEl.innerHTML = "";
+      for (let r = 0; r < 5; r++) {
+        const rowEl = document.createElement("div");
+        rowEl.className = "board-row";
+        rowEl.id = "row-" + r;
+        for (let c = 0; c < 5; c++) {
+          const tile = document.createElement("div");
+          const d = boardData[r][c];
+          tile.className = "tile tile-" + d.state;
+          tile.textContent = d.letter;
+          tile.id = "tile-" + r + "-" + c;
+          rowEl.appendChild(tile);
+        }
+        boardEl.appendChild(rowEl);
+      }
+    }
+
+    // ── Animate a row reveal ──
+    function animateRow(row, guess, result, callback) {
+      if (row < 0 || row >= 5) { if (callback) callback(); return; }
+      animating = true;
+      // First show letters
+      for (let c = 0; c < 5; c++) {
+        boardData[row][c] = {letter: guess[c], state: "filled"};
+      }
+      renderBoard();
+
+      // Then flip one by one
+      for (let c = 0; c < 5; c++) {
+        setTimeout(() => {
+          Sounds.flip();
+          const tile = document.getElementById("tile-" + row + "-" + c);
+          if (tile) {
+            tile.classList.add("flip");
+            setTimeout(() => {
+              boardData[row][c] = {letter: guess[c], state: result[c]};
+              tile.className = "tile tile-" + result[c];
+              tile.textContent = guess[c];
+            }, 250);
+          }
+        }, c * 400);
+      }
+
+      setTimeout(() => {
+        animating = false;
+        if (callback) callback();
+      }, 5 * 400 + 300);
+    }
+
+    // ── Listen ──
+    Game.listen(gameId, (game) => {
+      const teams = game.teams ? Object.values(game.teams) : [];
+
+      // ── LOBBY ──
+      if (game.status === "waiting") {
+        document.getElementById("lobbyScreen").classList.remove("hidden");
+        document.getElementById("gameScreen").classList.add("hidden");
+        document.getElementById("wonOverlay").classList.add("hidden");
+
+        let teamsHtml = "";
+        teams.forEach((t) => {
+          teamsHtml += `<div class="team-box"><span class="name">${t.name}</span><span class="points">${t.score}</span></div>`;
+        });
+        document.getElementById("lobbyTeams").innerHTML = teamsHtml;
+        document.getElementById("lobbyWait").textContent =
+          teams.length < 2 ? "Wachten op teams... (" + teams.length + "/2)" : "Wachten op start...";
+
+        prevStatus = "waiting";
+        prevAttemptCount = 0;
+        return;
+      }
+
+      // ── PLAYING ──
+      if (game.status === "playing") {
+        document.getElementById("lobbyScreen").classList.add("hidden");
+        document.getElementById("gameScreen").classList.remove("hidden");
+        document.getElementById("wonOverlay").classList.add("hidden");
+
+        // Scoreboard
+        let sbHtml = "";
+        teams.forEach((t, i) => {
+          const active = i === game.currentTeam ? "active" : "";
+          sbHtml += `<div class="team-box ${active}"><span class="name">${t.name}</span><span class="points">${t.score}</span></div>`;
+        });
+        document.getElementById("scoreboard").innerHTML = sbHtml;
+
+        // Turn indicator
+        const currentTeamName = teams[game.currentTeam] ? teams[game.currentTeam].name : "Team " + game.currentTeam;
+        document.getElementById("turnIndicator").textContent = currentTeamName + " is aan de beurt";
+        document.getElementById("roundInfo").textContent = game.round ? "Ronde " + game.round : "";
+
+        const firstLetter = game.word ? game.word[0] : "";
+        const attempts = game.attempts ? Object.values(game.attempts).sort((a,b) => a.row - b.row) : [];
+        const newAttemptCount = attempts.length;
+
+        // Nieuw bord bij status change of max-attempts reset
+        if (prevStatus !== "playing" || (game.switchReason === "max-attempts" && prevTeam !== game.currentTeam && newAttemptCount === 0)) {
+          boardData = createEmptyBoard();
+          boardData[0][0] = {letter: firstLetter, state: "hint"};
+          renderBoard();
+          prevAttemptCount = 0;
+        }
+
+        // Nieuwe poging animeren
+        if (newAttemptCount > prevAttemptCount && !animating) {
+          const latest = attempts[attempts.length - 1];
+          // Restore all previous attempts instantly
+          boardData = createEmptyBoard();
+          boardData[0][0] = {letter: firstLetter, state: "hint"};
+          for (let i = 0; i < attempts.length - 1; i++) {
+            const a = attempts[i];
+            for (let c = 0; c < 5; c++) {
+              boardData[a.row][c] = {letter: a.guess[c], state: a.result[c]};
+            }
+          }
+          renderBoard();
+
+          // Animate latest
+          const isCorrect = latest.result.every(r => r === "correct");
+          animateRow(latest.row, latest.guess, latest.result, () => {
+            if (isCorrect) {
+              Sounds.correct();
+            } else {
+              Sounds.incorrect();
+              const rowEl = document.getElementById("row-" + latest.row);
+              if (rowEl) { rowEl.classList.add("shake"); setTimeout(() => rowEl.classList.remove("shake"), 500); }
+              // Hint voor volgende rij
+              if (latest.row + 1 < 5) {
+                boardData[latest.row + 1][0] = {letter: firstLetter, state: "hint"};
+                renderBoard();
+              }
+            }
+          });
+        } else if (newAttemptCount === prevAttemptCount && prevStatus === "playing") {
+          // Team wissel zonder nieuwe attempt
+          if (prevTeam !== game.currentTeam && prevTeam !== -1) {
+            Sounds.switchTurn();
+          }
+        } else if (prevAttemptCount === newAttemptCount && prevStatus !== "playing") {
+          // Eerste keer playing, toon bestaande attempts
+          boardData = createEmptyBoard();
+          boardData[0][0] = {letter: firstLetter, state: "hint"};
+          for (const a of attempts) {
+            for (let c = 0; c < 5; c++) {
+              boardData[a.row][c] = {letter: a.guess[c], state: a.result[c]};
+            }
+          }
+          if (game.currentRow > 0 && game.currentRow < 5) {
+            boardData[game.currentRow][0] = {letter: firstLetter, state: "hint"};
+          }
+          renderBoard();
+        }
+
+        prevStatus = "playing";
+        prevAttemptCount = newAttemptCount;
+        prevTeam = game.currentTeam;
+        return;
+      }
+
+      // ── ROUND WON ──
+      if (game.status === "round-won") {
+        if (prevStatus !== "round-won") {
+          const attempts = game.attempts ? Object.values(game.attempts).sort((a,b) => a.row - b.row) : [];
+          if (attempts.length > prevAttemptCount) {
+            const latest = attempts[attempts.length - 1];
+            animateRow(latest.row, latest.guess, latest.result, () => {
+              Sounds.correct();
+              showWonOverlay(game, teams);
+            });
+          } else {
+            setTimeout(() => showWonOverlay(game, teams), 500);
+          }
+          prevAttemptCount = attempts.length;
+        }
+        prevStatus = "round-won";
+        return;
+      }
+    });
+
+    function showWonOverlay(game, teams) {
+      setTimeout(() => {
+        document.getElementById("wonOverlay").classList.remove("hidden");
+        const winner = teams[game.winningTeam];
+        document.getElementById("wonTitle").textContent = winner ? winner.name : "Team";
+
+        // Toon het woord
+        let wordHtml = "";
+        if (game.word) {
+          for (const ch of game.word) {
+            wordHtml += '<div class="letter">' + ch + '</div>';
+          }
+        }
+        document.getElementById("wonWord").innerHTML = wordHtml;
+
+        // Scores
+        let scoresHtml = "";
+        teams.forEach(t => {
+          scoresHtml += '<div style="text-align:center"><p style="opacity:.7;font-size:1.1rem">' + t.name + '</p><p style="font-size:3rem;font-weight:900;color:var(--yellow)">' + t.score + '</p></div>';
+        });
+        document.getElementById("wonScores").innerHTML = scoresHtml;
+
+        fireConfetti();
+        Sounds.victory();
+      }, 2500);
+    }
+
+    // Initial render
+    renderBoard();
+  </script>
+</body>
+</html>
