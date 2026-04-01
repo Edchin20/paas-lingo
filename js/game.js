@@ -5,35 +5,8 @@
 
 // ── Woordenlijst (Nederlandse 5-letter woorden, gevalideerd) ──
 const WORDS = [
-  "STORM","BLOEM","WATER","DRAAK","KLANK","PLANT","STOOM","TROTS","VREDE","ZWART",
-  "ZWEET","DWEIL","PLANK","SNOER","STOUT","STOEP","PRUIK","STEUN","TAART",
-  "BAARD","DRAAI","KLEED","KWAST","SPOOR","STIJL","TROEF","VLOOT","ZWAAN","PAARS",
-  "BOTER","DINER","EMMER","GEVEL","NAALD","OEVER","PAREL","RAMEN","SABEL","TEGEL",
-  "ADRES","AGENT","ALARM","ALBUM","APPEL","AVOND","BASIS","BEKER","BEZIG","BLOED",
-  "BODEM","BROEK","BROOD","BUURT","DROOM","DWARS","EIGEN","EINDE","EXTRA","FIETS",
-  "FLINK","FORUM","FRUIT","GEEST","GELUK","GEZIN","GRENS","GRIJS","GROEN","GROEP",
-  "GROND","GROOT","HAAST","HAMER","HAVEN","HEMEL","HOOFD","HOTEL","HUREN","INHAM",
-  "IVOOR","JEUGD","KAART","KABEL","KAMER","KEUZE","KLAAR","KLANT","KLEUR","KLOMP",
-  "KNOOP","KOERS","KOKEN","KOMST","KORPS","KRAAL","KRAAM","KRANT","KROEG","KROON",
-  "KUNST","KWART","LAGER","LASER","LEGER","LEREN","LINKS","LOPEN","LUCHT","MACHT",
-  "MALEN","MARKT","MEDIA","METEN","METRO","MODEL","MOTOR","MUREN","NACHT","NAVEL",
-  "NEGEN","NEMEN","NIEUW","NOBEL","NODIG","NOTEN","OFFER","ONWEL","ORDER","ORGEL",
-  "PAARD","PASTA","PAUZE","PINDA","PLAAT","PLEIN","PLONS","POORT","PRAAT","PRIJS",
-  "PRINS","PROEF","PUPIL","RADAR","RADIO","RAKEN","REBEL","RECHT","REDEN","REGIO",
-  "REEKS","REGEN","RENTE","ROBOT","ROMAN","RONDE","SALON","SALDO","SAMBA","SAUNA",
-  "SCENE","SERIE","SFEER","SLANG","SLOOP","SNOEP","SOORT","SPITS","SPORT","STAAL",
-  "STAAN","STANK","STEEG","STEEN","STERK","STOEL","STRAF","STRIP","SUPER","TABAK",
-  "TABEL","TANTE","TARWE","TEKST","TEMPO","THEMA","TITEL","TOCHT","TOREN","TREIN",
-  "TROEP","VACHT","VAREN","VIDEO","VILLA","VLEES","VLOER","VOGEL","VROUW","WAGEN",
-  "WEIDE","WETEN","WEZEN","WINST","WONEN","WRAAK","ZEBRA","ZEKER","BETER","DEKEN",
-  "ENGEL","GAPEN","PROOI","VAART","ZADEL","LAKEN","SPEEL","SMART","DRAMA","COACH",
-  "CLAIM","DATUM","DRAAD","IGLOO","IDOOL","ITEMS","MODEM","OMEGA","OPZIJ","PALET",
-  "RAILS","ROOMS","RUGBY","TIRAN","TUMOR","VLAAI","ZILTE","KLOOF","BRONS","DWANG",
-  "HAARD","KAARS","PIANO","WACHT","FEEST","KERST","ERNST","JACHT","WORST",
-  "BRUID","HELFT","POETS","RIJST","SCHAT","ZWEEP","SCHOK","MAAND","LEVER","NOOIT",
-  "VAKER","LICHT","ANDER","BIJNA","GRAAG","KORTE","LANGE","MOEST","ONDER","RUIME",
-  "SNELT","TERUG","BEIDE","DERDE","ENIGE","HALVE","KLEIN",
-].filter((w, i, arr) => w.length === 5 && /^[A-Z]+$/.test(w) && arr.indexOf(w) === i);
+  "PASEN","JUDAS","DORST","MARIA","VADER","KRUIS","LEVEN",
+];
 
 function randomWord() {
   return WORDS[Math.floor(Math.random() * WORDS.length)];
@@ -269,9 +242,6 @@ const Game = {
 // ═══════════════════════════════════════════
 
 const WordPool = {
-  // Gevoelige woorden die niet gebruikt worden
-  blacklist: ["PASEN", "JUDAS", "DORST", "MARIA", "VADER", "KRUIS", "LEVEN"],
-
   async getAll() {
     requireDb();
     const snap = await db.ref("wordPool").once("value");
@@ -280,11 +250,7 @@ const WordPool = {
       await db.ref("wordPool").set(WORDS);
       return [...WORDS];
     }
-    return Object.values(val).filter(w =>
-      typeof w === "string" &&
-      w.length === 5 &&
-      !this.blacklist.includes(w.toUpperCase())
-    );
+    return Object.values(val).filter(w => typeof w === "string" && w.length === 5);
   },
 
   async add(words) {
@@ -294,7 +260,7 @@ const WordPool = {
     const added = [];
     for (const w of words) {
       const u = w.trim().toUpperCase();
-      if (u.length === 5 && /^[A-Z]+$/.test(u) && !current.includes(u) && !this.blacklist.includes(u)) {
+      if (u.length === 5 && /^[A-Z]+$/.test(u) && !current.includes(u)) {
         current.push(u);
         added.push(u);
       }
@@ -316,12 +282,7 @@ const WordPool = {
     const ref = db.ref("wordPool");
     ref.on("value", snap => {
       const val = snap.val();
-      const filtered = val ? Object.values(val).filter(w =>
-        typeof w === "string" &&
-        w.length === 5 &&
-        !this.blacklist.includes(w.toUpperCase())
-      ) : [];
-      callback(filtered);
+      callback(val ? Object.values(val).filter(w => typeof w === "string" && w.length === 5) : []);
     });
     return () => ref.off("value");
   },
