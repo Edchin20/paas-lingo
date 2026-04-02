@@ -249,7 +249,14 @@
         aHtml += `<button class="btn btn-green btn-sm" onclick="startGame()" ${teams.length < 2 ? "disabled" : ""}>Start Spel</button>`;
       }
       if (g.status === "round-won") {
-        aHtml += `<button class="btn btn-green btn-sm" onclick="newRoundRandom()">Volgende Ronde</button>`;
+        const usedWords = g.wordHistory ? Object.values(g.wordHistory) : [];
+        if (g.word) usedWords.push(g.word);
+        const remaining = WORDS.filter(w => !usedWords.includes(w));
+        if (remaining.length > 0) {
+          aHtml += `<button class="btn btn-green btn-sm" onclick="newRoundRandom()">Volgende Ronde (${remaining.length} over)</button>`;
+        } else {
+          aHtml += `<span style="color:var(--red);font-weight:700;font-size:.9rem">Alle woorden zijn op!</span>`;
+        }
         aHtml += `<button class="btn btn-yellow btn-sm" onclick="document.getElementById('customWordRow').classList.remove('hidden')">Eigen Woord</button>`;
       }
       if (g.status === "playing") {
@@ -313,7 +320,10 @@
       if (!activeGameId) return;
       try {
         const w = await Game.newRound(activeGameId);
-        showMsg("Nieuwe ronde! Woord: " + w, "success");
+        const teams = activeGame?.teams ? Object.values(activeGame.teams) : [];
+        const newRound = (activeGame?.round || 0) + 1;
+        const startTeam = teams[(newRound - 1) % 2];
+        showMsg("Nieuwe ronde! Woord: " + w + (startTeam ? " — " + startTeam.name + " begint" : ""), "success");
       } catch (e) { showMsg(e.message, "error"); }
     }
 

@@ -185,19 +185,34 @@ const Game = {
     const game = snap.val();
     if (!game) throw new Error("Spel niet gevonden");
 
-    const newWord = (word || randomWord()).toUpperCase();
+    // Verzamel gebruikte woorden
+    const usedWords = game.wordHistory ? Object.values(game.wordHistory) : [];
+    if (game.word) usedWords.push(game.word);
+
+    let newWord;
+    if (word) {
+      newWord = word.toUpperCase();
+    } else {
+      const available = WORDS.filter(w => !usedWords.includes(w));
+      if (available.length === 0) throw new Error("Alle woorden zijn op! Voer een eigen woord in.");
+      newWord = available[Math.floor(Math.random() * available.length)];
+    }
+
+    // Teams wisselen wie begint per ronde
+    const newRoundNum = (game.round || 0) + 1;
+    const startingTeam = (newRoundNum - 1) % 2;
 
     // Sla oud woord op in history
     const histLen = game.wordHistory ? Object.keys(game.wordHistory).length : 0;
     const updates = {
       status: "playing",
       word: newWord,
-      currentTeam: 0,
+      currentTeam: startingTeam,
       currentRow: 0,
       attempts: null,
       winningTeam: null,
       switchReason: null,
-      round: (game.round || 0) + 1,
+      round: newRoundNum,
     };
     updates["wordHistory/" + histLen] = game.word;
 
