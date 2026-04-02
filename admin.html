@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Paas Lingo - Beheerder</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
   <div class="container">
@@ -96,6 +96,12 @@
             <button class="btn btn-yellow btn-sm" onclick="randomWordBtn()" style="white-space:nowrap">Willekeurig</button>
           </div>
         </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer">
+            <input id="newGameTimer" type="checkbox" style="width:20px;height:20px;accent-color:var(--yellow)">
+            <span style="color:rgba(255,255,255,.6);font-size:.95rem;font-weight:600">Timer (30 sec per beurt)</span>
+          </label>
+        </div>
         <button class="btn btn-green" style="width:100%" onclick="createGame()">Spel Aanmaken</button>
       </div>
     </div>
@@ -122,8 +128,8 @@
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="js/firebase-config.js?v=4"></script>
-  <script src="js/game.js?v=4"></script>
+  <script src="js/firebase-config.js?v=5"></script>
+  <script src="js/game.js?v=5"></script>
 
   <script>
     // ═══ STATE ═══
@@ -174,8 +180,8 @@
       let html = "";
       for (const g of allGames) {
         const teams = g.teams ? Object.values(g.teams) : [];
-        const statusLabel = g.status === "waiting" ? "Wachten" : g.status === "playing" ? "Bezig" : g.status === "round-won" ? "Ronde klaar" : g.status;
-        const statusClass = g.status === "playing" ? "badge-playing" : g.status === "round-won" ? "badge-won" : "badge-waiting";
+        const statusLabel = g.status === "waiting" ? "Wachten" : g.status === "playing" ? "Bezig" : g.status === "stealing" ? "Stelen!" : g.status === "round-won" ? "Ronde klaar" : g.status === "round-over" ? "Niemand wint" : g.status;
+        const statusClass = g.status === "playing" || g.status === "stealing" ? "badge-playing" : (g.status === "round-won" || g.status === "round-over") ? "badge-won" : "badge-waiting";
         let teamsStr = teams.map(t => `${t.name}: <strong style="color:var(--yellow)">${t.score}</strong>`).join(" &nbsp; ");
 
         html += `<div class="game-row" onclick="openGame('${g.id}')">
@@ -223,9 +229,10 @@
       document.getElementById("agRound").textContent = g.round || 0;
 
       const statusEl = document.getElementById("agStatus");
-      const labels = {waiting:"Wachten",playing:"Bezig","round-won":"Ronde gewonnen"};
+      const labels = {waiting:"Wachten",playing:"Bezig",stealing:"Stelen!","round-won":"Ronde gewonnen","round-over":"Niemand wint"};
       statusEl.textContent = labels[g.status] || g.status;
-      statusEl.className = "badge " + (g.status === "playing" ? "badge-playing" : g.status === "round-won" ? "badge-won" : "badge-waiting");
+      const statusClass = g.status === "playing" ? "badge-playing" : g.status === "stealing" ? "badge-playing" : (g.status === "round-won" || g.status === "round-over") ? "badge-won" : "badge-waiting";
+      statusEl.className = "badge " + statusClass;
 
       // Teams
       const teams = g.teams ? Object.values(g.teams) : [];
@@ -248,7 +255,7 @@
       if (g.status === "waiting") {
         aHtml += `<button class="btn btn-green btn-sm" onclick="startGame()" ${teams.length < 2 ? "disabled" : ""}>Start Spel</button>`;
       }
-      if (g.status === "round-won") {
+      if (g.status === "round-won" || g.status === "round-over") {
         const usedWords = g.wordHistory ? Object.values(g.wordHistory) : [];
         if (g.word) usedWords.push(g.word);
         const remaining = WORDS.filter(w => !usedWords.includes(w));
@@ -260,7 +267,11 @@
         aHtml += `<button class="btn btn-yellow btn-sm" onclick="document.getElementById('customWordRow').classList.remove('hidden')">Eigen Woord</button>`;
       }
       if (g.status === "playing") {
-        aHtml += `<span style="color:rgba(255,255,255,.4);font-style:italic;font-size:.9rem">Spel is bezig... Poging ${(g.currentRow||0)+1}/${g.maxAttempts||5}</span>`;
+        aHtml += `<span style="color:rgba(255,255,255,.4);font-style:italic;font-size:.9rem">Spel is bezig... Poging ${(g.currentRow||0)+1}/${g.maxAttempts||5}${g.timerEnabled ? ' ⏱' : ''}</span>`;
+      }
+      if (g.status === "stealing") {
+        const stealTeam = teams[g.stealingTeam];
+        aHtml += `<span style="color:var(--orange);font-weight:700;font-size:.9rem">🔥 ${stealTeam ? stealTeam.name : 'Team'} mag stelen!</span>`;
       }
       aHtml += `<button class="btn btn-outline btn-sm" onclick="resetScores()">Reset Scores</button>`;
       document.getElementById("agActions").innerHTML = aHtml;
@@ -293,8 +304,9 @@
         return;
       }
       try {
-        const game = await Game.create(word || null, name || null);
-        showMsg("Spel " + game.id + " aangemaakt!", "success");
+        const timerEnabled = document.getElementById("newGameTimer").checked;
+        const game = await Game.create(word || null, name || null, { timerEnabled });
+        showMsg("Spel " + game.id + " aangemaakt!" + (timerEnabled ? " (timer aan)" : ""), "success");
         document.getElementById("newGameWord").value = "";
         document.getElementById("newGameName").value = "";
         switchTab("games");

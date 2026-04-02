@@ -255,6 +255,72 @@ textarea.form-input{text-align:left;resize:vertical;font-family:monospace;font-s
 }
 @keyframes floatTile{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-18px) rotate(8deg)}}
 
+/* ═══ TIMER ═══ */
+.timer-display{
+  font-size:2.8rem;font-weight:900;color:var(--yellow);
+  text-align:center;margin-bottom:1rem;letter-spacing:.05em;
+  text-shadow:0 0 20px rgba(255,215,0,.3);
+  transition:color .3s;
+}
+.timer-display.urgent{
+  color:var(--red);
+  animation:timerPulse .5s ease-in-out infinite;
+  text-shadow:0 0 25px rgba(232,51,74,.5);
+}
+@keyframes timerPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+
+/* ═══ STEAL INDICATOR ═══ */
+.steal-text{
+  font-size:1.8rem;font-weight:900;color:var(--orange);
+  text-transform:uppercase;letter-spacing:.1em;
+  animation:stealPulse 1s ease-in-out infinite;
+}
+@keyframes stealPulse{0%,100%{text-shadow:0 0 10px rgba(255,140,0,.3)}50%{text-shadow:0 0 30px rgba(255,140,0,.8)}}
+
+.steal-row{border:3px dashed var(--orange)!important;border-radius:14px;padding:2px}
+
+/* ═══ ROUND-OVER OVERLAY ═══ */
+.word-reveal.failed .letter{
+  background:var(--red);
+  box-shadow:0 4px 15px rgba(232,51,74,.4);
+}
+
+/* ═══ FULLSCREEN BUTTON ═══ */
+#fullscreenBtn{
+  position:fixed;top:1rem;right:1rem;z-index:200;
+  background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.2);
+  color:rgba(255,255,255,.6);padding:.5rem 1rem;border-radius:10px;
+  font-family:'Montserrat';font-weight:700;font-size:.8rem;cursor:pointer;
+  text-transform:uppercase;letter-spacing:.05em;transition:all .2s;
+}
+#fullscreenBtn:hover{background:rgba(255,215,0,.15);border-color:var(--yellow);color:var(--yellow)}
+
+/* ═══ FULLSCREEN BEAMER MODE ═══ */
+body.fullscreen-mode{
+  background:linear-gradient(135deg,#020815,var(--blue-dark) 40%,var(--blue) 80%);
+}
+body.fullscreen-mode .scoreboard{gap:4rem;margin-bottom:2.5rem}
+body.fullscreen-mode .team-box{padding:1.5rem 4rem;min-width:280px;border-radius:20px}
+body.fullscreen-mode .team-box .name{font-size:1.8rem}
+body.fullscreen-mode .team-box .points{font-size:4.5rem}
+body.fullscreen-mode .turn-text{font-size:2.2rem;margin-bottom:2rem}
+body.fullscreen-mode .steal-text{font-size:2.5rem}
+body.fullscreen-mode .board{
+  --tile:110px;--gap:8px;padding:2rem;border-radius:24px;
+}
+body.fullscreen-mode .tile{font-size:3.2rem;border-radius:16px}
+body.fullscreen-mode .timer-display{font-size:4.5rem}
+body.fullscreen-mode .overlay-title{font-size:5rem}
+body.fullscreen-mode .overlay-sub{font-size:2rem}
+body.fullscreen-mode .word-reveal .letter{
+  width:80px;height:80px;font-size:2.8rem;border-radius:14px;
+}
+body.fullscreen-mode .logo{font-size:8rem}
+body.fullscreen-mode .logo-sub{font-size:2.2rem;letter-spacing:.4em}
+body.fullscreen-mode #lobbyCode{font-size:4rem!important}
+body.fullscreen-mode #lobbyWait{font-size:1.8rem!important}
+body.fullscreen-mode #roundInfo{font-size:1.1rem!important}
+
 /* ═══ RESPONSIVE ═══ */
 @media(max-width:768px){
   :root{--tile:55px}
@@ -265,4 +331,5 @@ textarea.form-input{text-align:left;resize:vertical;font-family:monospace;font-s
   .letter-box{width:46px;height:54px;font-size:1.5rem}
   .btn{padding:.8rem 2rem;font-size:1.1rem}
   .game-code{font-size:2rem}
+  .timer-display{font-size:2rem}
 }

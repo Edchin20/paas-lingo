@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════════
-// PAAS LINGO - Game Engine v3
-// Werkt met Firebase Realtime Database - geen server nodig
+// PAAS LINGO - Game Engine v4
+// Timer, Stelen, Fullscreen beamer-modus
 // ═══════════════════════════════════════════════════════════════
 
-// ── Woordenlijst (Nederlandse 5-letter woorden, gevalideerd) ──
+// ── Woordenlijst (Nederlandse 5-letter woorden) ──
 const WORDS = [
   "PASEN","JUDAS","DORST","MARIA","VADER","KRUIS","LEVEN",
 ];
@@ -49,8 +49,9 @@ function requireDb() {
 
 const Game = {
   // Maak een nieuw spel aan
-  async create(word, gameName) {
+  async create(word, gameName, options) {
     requireDb();
+    const opts = options || {};
     const id = generateCode();
     const game = {
       id,
@@ -64,6 +65,10 @@ const Game = {
       maxAttempts: 5,
       round: 0,
       wordHistory: {},
+      timerEnabled: !!opts.timerEnabled,
+      timerDuration: opts.timerDuration || 30,
+      turnStartedAt: null,
+      stealingTeam: null,
       createdAt: Date.now(),
     };
     await db.ref("games/" + id).set(game);
@@ -88,12 +93,11 @@ const Game = {
     const count = Object.keys(teams).length;
     if (count >= 2) throw new Error("Spel is al vol (2 teams)");
 
-    // Check dubbele naam
     for (const k in teams) {
       if (teams[k].name.toLowerCase() === teamName.toLowerCase()) throw new Error("Teamnaam al in gebruik");
     }
 
-    const idx = count; // 0 of 1
+    const idx = count;
     await db.ref("games/" + gameId + "/teams/" + idx).set({
       name: teamName,
       score: 0,
@@ -116,10 +120,12 @@ const Game = {
       currentRow: 0,
       attempts: null,
       round: (game.round || 0) + 1,
+      turnStartedAt: Date.now(),
+      stealingTeam: null,
     });
   },
 
-  // Woord raden (met transaction voor race-condition bescherming)
+  // Woord raden
   async guess(gameId, guess, teamIndex) {
     requireDb();
     const snap = await db.ref("games/" + gameId).once("value");
@@ -144,7 +150,6 @@ const Game = {
     });
 
     if (isCorrect) {
-      // Gewonnen!
       const newScore = ((game.teams && game.teams[teamIndex] && game.teams[teamIndex].score) || 0) + 1;
       await db.ref("games/" + gameId).update({
         status: "round-won",
@@ -158,13 +163,14 @@ const Game = {
     const nextTeam = teamIndex === 0 ? 1 : 0;
 
     if (nextRow >= (game.maxAttempts || 5)) {
-      // Max pogingen bereikt, wissel team en reset bord
+      // Max pogingen bereikt → STELEN!
       await db.ref("games/" + gameId).update({
+        status: "stealing",
         currentTeam: nextTeam,
-        currentRow: 0,
-        attempts: null,
+        stealingTeam: nextTeam,
         switchReason: "max-attempts",
         switchTimestamp: Date.now(),
+        turnStartedAt: Date.now(),
       });
     } else {
       // Wissel beurt
@@ -173,9 +179,99 @@ const Game = {
         currentRow: nextRow,
         switchReason: "wrong-guess",
         switchTimestamp: Date.now(),
+        turnStartedAt: Date.now(),
       });
     }
     return { isCorrect: false };
+  },
+
+  // Steel-poging (1 kans)
+  async stealGuess(gameId, guess, teamIndex) {
+    requireDb();
+    const snap = await db.ref("games/" + gameId).once("value");
+    const game = snap.val();
+    if (!game || game.status !== "stealing") throw new Error("Niet in steel-fase");
+    if (teamIndex !== game.stealingTeam) throw new Error("Niet jouw beurt om te stelen!");
+
+    const upper = guess.toUpperCase();
+    if (upper.length !== 5 || !/^[A-Z]+$/.test(upper)) throw new Error("Voer 5 letters in");
+
+    const result = checkGuess(upper, game.word);
+    const isCorrect = result.every(r => r === "correct");
+
+    // Sla steel-poging op als rij 5 (de 6e rij)
+    await db.ref("games/" + gameId + "/attempts/5").set({
+      guess: upper,
+      result: result,
+      team: teamIndex,
+      row: 5,
+      isSteal: true,
+      timestamp: Date.now(),
+    });
+
+    if (isCorrect) {
+      const newScore = ((game.teams && game.teams[teamIndex] && game.teams[teamIndex].score) || 0) + 1;
+      await db.ref("games/" + gameId).update({
+        status: "round-won",
+        winningTeam: teamIndex,
+      });
+      await db.ref("games/" + gameId + "/teams/" + teamIndex + "/score").set(newScore);
+      return { isCorrect: true, stolen: true };
+    } else {
+      // Stelen mislukt → niemand wint
+      await db.ref("games/" + gameId).update({
+        status: "round-over",
+        winningTeam: null,
+      });
+      return { isCorrect: false, stolen: false };
+    }
+  },
+
+  // Timer timeout (aangeroepen door beamer)
+  async timeout(gameId, expectedTeam) {
+    requireDb();
+    const snap = await db.ref("games/" + gameId).once("value");
+    const game = snap.val();
+    if (!game) return;
+    if (!game.timerEnabled) return;
+
+    // Controleer dat de game state nog klopt
+    if (game.currentTeam !== expectedTeam) return;
+
+    if (game.status === "stealing") {
+      // Timeout tijdens stelen → niemand wint
+      await db.ref("games/" + gameId).update({
+        status: "round-over",
+        winningTeam: null,
+      });
+      return;
+    }
+
+    if (game.status !== "playing") return;
+
+    // Zelfde logica als foute gok
+    const row = game.currentRow || 0;
+    const nextRow = row + 1;
+    const nextTeam = expectedTeam === 0 ? 1 : 0;
+
+    if (nextRow >= (game.maxAttempts || 5)) {
+      await db.ref("games/" + gameId).update({
+        status: "stealing",
+        currentTeam: nextTeam,
+        stealingTeam: nextTeam,
+        switchReason: "timeout",
+        switchTimestamp: Date.now(),
+        turnStartedAt: Date.now(),
+      });
+    } else {
+      await db.ref("games/" + gameId).update({
+        currentTeam: nextTeam,
+        currentRow: nextRow,
+        switchReason: "timeout",
+        switchTimestamp: Date.now(),
+        turnStartedAt: Date.now(),
+      });
+    }
   },
 
   // Nieuwe ronde
@@ -202,7 +298,6 @@ const Game = {
     const newRoundNum = (game.round || 0) + 1;
     const startingTeam = (newRoundNum - 1) % 2;
 
-    // Sla oud woord op in history
     const histLen = game.wordHistory ? Object.keys(game.wordHistory).length : 0;
     const updates = {
       status: "playing",
@@ -211,8 +306,10 @@ const Game = {
       currentRow: 0,
       attempts: null,
       winningTeam: null,
+      stealingTeam: null,
       switchReason: null,
       round: newRoundNum,
+      turnStartedAt: Date.now(),
     };
     updates["wordHistory/" + histLen] = game.word;
 

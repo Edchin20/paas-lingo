@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Paas Lingo - Spelen</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
 
@@ -29,6 +29,9 @@
 
       <!-- Scores -->
       <div id="scoreBar" style="display:flex;gap:1rem;justify-content:center;margin-bottom:1rem;font-size:.85rem;color:rgba(255,255,255,.6)"></div>
+
+      <!-- Timer -->
+      <div id="timerDisplay" class="timer-display hidden"><span id="timerSeconds">30</span></div>
 
       <!-- Jouw beurt -->
       <div id="turnSection">
@@ -58,15 +61,22 @@
     <div id="wonScores" style="display:flex;gap:3rem;margin-top:1.5rem"></div>
   </div>
 
+  <!-- RONDE VOORBIJ OVERLAY (niemand wint) -->
+  <div id="overOverlay" class="overlay hidden">
+    <p class="overlay-title" style="color:var(--red)">Niemand wint!</p>
+    <p class="overlay-sub">Wacht op de volgende ronde...</p>
+    <div id="overScores" style="display:flex;gap:3rem;margin-top:1.5rem"></div>
+  </div>
+
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="js/firebase-config.js?v=4"></script>
-  <script src="js/game.js?v=4"></script>
-  <script src="js/sounds.js?v=4"></script>
+  <script src="js/firebase-config.js?v=5"></script>
+  <script src="js/game.js?v=5"></script>
+  <script src="js/sounds.js?v=5"></script>
 
   <script>
-    // ── Session data via URL params (primair) of sessionStorage (fallback) ──
+    // ── Session data ──
     const params = new URLSearchParams(window.location.search);
     const gameId = params.get("game") || sessionStorage.getItem("gameId");
     const teamName = params.get("team") || sessionStorage.getItem("teamName");
@@ -86,6 +96,7 @@
     let currentStatus = "";
     let letters = ["","","","",""];
     let submitting = false;
+    let timerInterval = null;
 
     // ── Build letter inputs ──
     const wordInputDiv = document.getElementById("wordInput");
@@ -101,7 +112,6 @@
       inp.dataset.idx = i;
       if (i === 0) inp.disabled = true;
 
-      // Input event voor zowel desktop als mobiel
       inp.addEventListener("input", function(e) {
         const idx = parseInt(this.dataset.idx);
         if (idx === 0) return;
@@ -132,7 +142,6 @@
         }
       });
 
-      // Focus event: selecteer alle tekst bij focus
       inp.addEventListener("focus", function() {
         this.select();
       });
@@ -157,9 +166,37 @@
       }, 150);
     }
 
+    // ── Timer (alleen display, beamer doet de timeout) ──
+    function startPlayerTimer(game) {
+      stopPlayerTimer();
+      if (!game.timerEnabled || !game.turnStartedAt) return;
+      const display = document.getElementById("timerDisplay");
+      const seconds = document.getElementById("timerSeconds");
+      display.classList.remove("hidden");
+
+      timerInterval = setInterval(() => {
+        const elapsed = (Date.now() - game.turnStartedAt) / 1000;
+        const remaining = Math.max(0, Math.ceil((game.timerDuration || 30) - elapsed));
+        seconds.textContent = remaining;
+        if (remaining <= 5) {
+          display.classList.add("urgent");
+        } else {
+          display.classList.remove("urgent");
+        }
+        if (remaining <= 0) stopPlayerTimer();
+      }, 500);
+    }
+
+    function stopPlayerTimer() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      const display = document.getElementById("timerDisplay");
+      display.classList.add("hidden");
+      display.classList.remove("urgent");
+    }
+
     // ── Submit ──
     async function submitGuess() {
-      if (submitting) return; // Voorkom dubbele submits
+      if (submitting) return;
       const word = letters.join("");
       if (word.length !== 5 || !/^[A-Z]+$/.test(word)) {
         showPlayError("Vul alle 5 letters in!");
@@ -170,7 +207,11 @@
       hidePlayError();
 
       try {
-        await Game.guess(gameId, word, teamIndex);
+        if (currentStatus === "stealing") {
+          await Game.stealGuess(gameId, word, teamIndex);
+        } else {
+          await Game.guess(gameId, word, teamIndex);
+        }
       } catch (e) {
         showPlayError(e.message);
       }
@@ -187,7 +228,7 @@
       document.getElementById("playError").classList.add("hidden");
     }
 
-    // ── Listen to game ──
+    // ── Listen ──
     let prevStatus = "";
     let prevTeam = -1;
 
@@ -199,6 +240,8 @@
         document.getElementById("waitScreen").classList.remove("hidden");
         document.getElementById("playScreen").classList.add("hidden");
         document.getElementById("wonOverlay").classList.add("hidden");
+        document.getElementById("overOverlay").classList.add("hidden");
+        stopPlayerTimer();
         prevStatus = game.status;
         return;
       }
@@ -207,18 +250,21 @@
       if (game.status === "playing") {
         document.getElementById("waitScreen").classList.add("hidden");
         document.getElementById("playScreen").classList.remove("hidden");
-        document.getElementById("wonOverlay").classList.add("hidden"); // Sluit won-overlay bij nieuwe ronde!
+        document.getElementById("wonOverlay").classList.add("hidden");
+        document.getElementById("overOverlay").classList.add("hidden");
 
         isMyTurn = game.currentTeam === teamIndex;
-        // Alleen eerste letter (niet het hele woord!)
         firstLetter = game.word ? game.word[0] : "";
 
-        // Update hint
         inputs[0].value = firstLetter;
         letters[0] = firstLetter;
         document.getElementById("hintBox").textContent = firstLetter;
 
-        // Show/hide sections
+        // Turn label
+        document.getElementById("turnLabel").textContent = "Jouw beurt!";
+        document.getElementById("turnLabel").className = "your-turn";
+        document.getElementById("submitBtn").textContent = "VERSTUUR";
+
         document.getElementById("turnSection").classList.toggle("hidden", !isMyTurn);
         document.getElementById("waitTurnSection").classList.toggle("hidden", isMyTurn);
 
@@ -228,16 +274,58 @@
             otherTeam ? otherTeam.name + " is aan de beurt..." : "Wacht op het andere team...";
         }
 
-        // Reset inputs als beurt wisselt of spel (her)start
         if (prevTeam !== game.currentTeam || prevStatus !== "playing") {
           if (isMyTurn) {
             resetInputs();
             if (prevTeam !== -1 && prevTeam !== game.currentTeam) Sounds.switchTurn();
           }
           hidePlayError();
+          startPlayerTimer(game);
         }
 
-        // Update scores
+        updateScoreBar(game);
+        prevStatus = game.status;
+        prevTeam = game.currentTeam;
+        return;
+      }
+
+      // ── STEALING ──
+      if (game.status === "stealing") {
+        document.getElementById("waitScreen").classList.add("hidden");
+        document.getElementById("playScreen").classList.remove("hidden");
+        document.getElementById("wonOverlay").classList.add("hidden");
+        document.getElementById("overOverlay").classList.add("hidden");
+
+        isMyTurn = game.stealingTeam === teamIndex;
+        firstLetter = game.word ? game.word[0] : "";
+
+        inputs[0].value = firstLetter;
+        letters[0] = firstLetter;
+        document.getElementById("hintBox").textContent = firstLetter;
+
+        // Steel-modus labels
+        document.getElementById("turnLabel").textContent = "STEEL HET WOORD!";
+        document.getElementById("turnLabel").className = "steal-text";
+        document.getElementById("submitBtn").textContent = "STEEL!";
+
+        document.getElementById("turnSection").classList.toggle("hidden", !isMyTurn);
+        document.getElementById("waitTurnSection").classList.toggle("hidden", isMyTurn);
+
+        if (!isMyTurn) {
+          const stealTeam = game.teams && game.teams[game.stealingTeam];
+          document.getElementById("waitTurnText").textContent =
+            stealTeam ? stealTeam.name + " mag stelen..." : "Het andere team mag stelen...";
+        }
+
+        if (prevStatus !== "stealing") {
+          if (isMyTurn) {
+            resetInputs();
+            Sounds.switchTurn();
+          }
+          hidePlayError();
+          startPlayerTimer(game);
+        }
+
         updateScoreBar(game);
         prevStatus = game.status;
         prevTeam = game.currentTeam;
@@ -246,13 +334,14 @@
 
       // ── ROUND WON ──
       if (game.status === "round-won") {
+        stopPlayerTimer();
         document.getElementById("wonOverlay").classList.remove("hidden");
+        document.getElementById("overOverlay").classList.add("hidden");
         const winner = game.teams && game.teams[game.winningTeam];
         const wonByMe = game.winningTeam === teamIndex;
         document.getElementById("wonText").textContent = wonByMe ? "Jullie winnen!" : (winner ? winner.name + " wint!" : "Ronde voorbij!");
         document.getElementById("wonText").style.color = wonByMe ? "var(--green)" : "var(--red)";
 
-        // Scores
         let scoresHtml = "";
         if (game.teams) {
           Object.values(game.teams).forEach(t => {
@@ -263,6 +352,27 @@
 
         if (prevStatus !== "round-won") {
           wonByMe ? Sounds.victory() : Sounds.incorrect();
+        }
+        prevStatus = game.status;
+        return;
+      }
+
+      // ── ROUND OVER (niemand wint) ──
+      if (game.status === "round-over") {
+        stopPlayerTimer();
+        document.getElementById("overOverlay").classList.remove("hidden");
+        document.getElementById("wonOverlay").classList.add("hidden");
+
+        let scoresHtml = "";
+        if (game.teams) {
+          Object.values(game.teams).forEach(t => {
+            scoresHtml += '<div style="text-align:center"><p style="opacity:.7">' + t.name + '</p><p style="font-size:2.5rem;font-weight:900;color:var(--yellow)">' + t.score + '</p></div>';
+          });
+        }
+        document.getElementById("overScores").innerHTML = scoresHtml;
+
+        if (prevStatus !== "round-over") {
+          Sounds.incorrect();
         }
         prevStatus = game.status;
         return;
